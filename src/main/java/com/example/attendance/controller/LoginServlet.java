@@ -2,7 +2,6 @@ package com.example.attendance.controller;
 
 import java.io.IOException;
 
-import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -30,16 +29,13 @@ public class LoginServlet extends HttpServlet {
             session.setAttribute("successMessage", "ログインしました。");
 
             if ("admin".equals(user.getRole())) {
-                RequestDispatcher rd = req.getRequestDispatcher("/jsp/admin_menu.jsp");
-                rd.forward(req, resp);
+                resp.sendRedirect(req.getContextPath() + "/attendance?action=filter");
             } else {
-                RequestDispatcher rd = req.getRequestDispatcher("/jsp/employee_menu.jsp");
-                rd.forward(req, resp);
+                resp.sendRedirect(req.getContextPath() + "/attendance");
             }
         } else {
             req.setAttribute("errorMessage", "ユーザーID またはパスワードが不正です。またはアカウントが無効です。");
-            RequestDispatcher rd = req.getRequestDispatcher("/login.jsp");
-            rd.forward(req, resp);
+            req.getRequestDispatcher("/login.jsp").forward(req, resp);
         }
     }
 }
