@@ -36,6 +36,7 @@
             <tr>
                 <th>出勤時刻</th>
                 <th>退勤時刻</th>
+                <th>残業時間</th> 
             </tr>
         </thead>
         <tbody>
@@ -43,11 +44,12 @@
             <tr>
                 <td>${att.checkInStr}</td>
                 <td>${att.checkOutStr}</td>
+                <td>${att.overtimeStr}</td> 
             </tr>
         </c:forEach>
         <c:if test="${empty attendanceRecords}">
             <tr>
-                <td colspan="2">勤怠記録がありません。</td>
+                <td colspan="3">勤怠記録がありません。</td>
             </tr>
         </c:if>
         </tbody>

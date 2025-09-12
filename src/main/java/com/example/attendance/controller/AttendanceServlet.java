@@ -1,13 +1,16 @@
 package com.example.attendance.controller;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.stream.Collectors;
 
 import jakarta.servlet.RequestDispatcher;
@@ -26,9 +29,29 @@ import com.example.attendance.dto.User;
 public class AttendanceServlet extends HttpServlet {
     private final AttendanceDAO attendanceDAO = new AttendanceDAO();
 
-    // datetime-local対応
-    private static final DateTimeFormatter INPUT_FORMATTER = 
+    // 設定ファイルから読み込む値
+    private LocalTime START_TIME;
+    private LocalTime END_TIME;
+    private LocalTime REMINDER_TIME;
+
+    private static final DateTimeFormatter INPUT_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm");
+
+    @Override
+    public void init() throws ServletException {
+        super.init();
+        Properties props = new Properties();
+        try (InputStream in = getServletContext().getResourceAsStream("/WEB-INF/config.properties")) {
+            if (in == null) throw new ServletException("config.properties が見つかりません");
+            props.load(in);
+
+            START_TIME = LocalTime.parse(props.getProperty("work.start"));
+            END_TIME = LocalTime.parse(props.getProperty("work.end"));
+            REMINDER_TIME = LocalTime.parse(props.getProperty("reminder.time"));
+        } catch (IOException e) {
+            throw new ServletException("設定ファイルの読み込みに失敗しました", e);
+        }
+    }
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -110,10 +133,28 @@ public class AttendanceServlet extends HttpServlet {
     private void handleEmployee(HttpServletRequest req, HttpServletResponse resp, User user) throws ServletException, IOException {
         List<Attendance> records = attendanceDAO.findByUserId(user.getUsername());
         req.setAttribute("attendanceRecords", records);
+
+        // ★ 残業時間の月合計を計算
+        long monthlyOvertimeMinutes = records.stream()
+                .mapToLong(Attendance::getOvertimeMinutes)
+                .sum();
+        req.setAttribute("monthlyOvertimeHours", String.format("%.1f", monthlyOvertimeMinutes / 60.0));
+
+        // 打刻忘れチェック
+        boolean hasCheckedInToday = records.stream().anyMatch(att ->
+                att.getCheckInTime() != null &&
+                        att.getCheckInTime().toLocalDate().isEqual(LocalDate.now())
+        );
+
+        if (LocalTime.now().isAfter(REMINDER_TIME) && !hasCheckedInToday) {
+            req.setAttribute("notificationMessage", "⚠ 本日の出勤打刻がまだです！");
+        }
+
         RequestDispatcher rd = req.getRequestDispatcher("/jsp/employee_menu.jsp");
         rd.forward(req, resp);
     }
 
+    // --- Admin関連メソッド（省略せずに維持） ---
     private void handleAdminFilter(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         String filterUserId = req.getParameter("filterUserId");
         String startDateStr = req.getParameter("startDate");
@@ -138,7 +179,13 @@ public class AttendanceServlet extends HttpServlet {
                             }
                             return 0L;
                         })));
+
+        Map<String, Long> overtimeHoursByUser = filteredRecords.stream()
+                .collect(Collectors.groupingBy(Attendance::getUserId,
+                        Collectors.summingLong(Attendance::getOvertimeMinutes)));
+
         req.setAttribute("totalHoursByUser", totalHoursByUser);
+        req.setAttribute("overtimeHoursByUser", overtimeHoursByUser);
         req.setAttribute("monthlyWorkingHours", attendanceDAO.getMonthlyWorkingHours(filterUserId));
         req.setAttribute("monthlyCheckInCounts", attendanceDAO.getMonthlyCheckInCounts(filterUserId));
 
@@ -171,7 +218,7 @@ public class AttendanceServlet extends HttpServlet {
             LocalDateTime checkOut = req.getParameter("newCheckOutTime") != null && !req.getParameter("newCheckOutTime").isEmpty()
                     ? LocalDateTime.parse(req.getParameter("newCheckOutTime"), INPUT_FORMATTER) : null;
             boolean success = attendanceDAO.updateManualAttendance(id, checkIn, checkOut);
-            session.setAttribute(success ? "successMessage" : "errorMessage", 
+            session.setAttribute(success ? "successMessage" : "errorMessage",
                     success ? "勤怠記録を更新しました。" : "勤怠記録の更新に失敗しました。");
         } catch (Exception e) {
             session.setAttribute("errorMessage", "日付/時刻の形式が不正です。");
