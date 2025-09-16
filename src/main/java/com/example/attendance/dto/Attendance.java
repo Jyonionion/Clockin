@@ -59,10 +59,14 @@ public class Attendance {
         return h + "時間" + String.format("%02d", m) + "分";
     }
 
-    // ★ 数値として残業分を返す（サーブレットで合計計算用）
+ // Attendance.java
     public long getOvertimeMinutes() {
-        if (checkInTime == null || checkOutTime == null) return 0;
-        long minutesWorked = Duration.between(checkInTime, checkOutTime).toMinutes();
-        return Math.max(minutesWorked - 480, 0);
+        if (checkInTime != null && checkOutTime != null) {
+            long workedMinutes = java.time.temporal.ChronoUnit.MINUTES.between(checkInTime, checkOutTime);
+            long standardMinutes = 8 * 60; // 8時間
+            return Math.max(0, workedMinutes - standardMinutes); // 8時間超過分のみ返す
+        }
+        return 0;
     }
+
 }

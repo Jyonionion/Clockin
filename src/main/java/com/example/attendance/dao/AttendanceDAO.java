@@ -20,6 +20,7 @@ public class AttendanceDAO {
     private static final AtomicLong idGenerator = new AtomicLong(1); // ID自動採番
     private final UserDAO userDAO = new UserDAO(); // ユーザー存在チェック用
 
+    // ====== 出勤・退勤 ======
     public void checkIn(String userId) {
         Attendance attendance = new Attendance(userId);
         attendance.setId(idGenerator.getAndIncrement());
@@ -34,6 +35,7 @@ public class AttendanceDAO {
                 .ifPresent(att -> att.setCheckOutTime(LocalDateTime.now()));
     }
 
+    // ====== 検索 ======
     public List<Attendance> findByUserId(String userId) {
         return attendanceRecords.stream()
                 .filter(att -> userId.equals(att.getUserId()))
@@ -54,6 +56,7 @@ public class AttendanceDAO {
                 .collect(Collectors.toList());
     }
 
+    // ====== 月別集計 ======
     public Map<YearMonth, Long> getMonthlyWorkingHours(String userId) {
         return attendanceRecords.stream()
                 .filter(att -> userId == null || userId.isEmpty() || att.getUserId().equals(userId))
@@ -73,10 +76,18 @@ public class AttendanceDAO {
                         Collectors.counting()));
     }
 
-    /**
-     * 手動追加
-     * @return true=追加成功、false=ユーザー存在しない場合
-     */
+    // ====== 任意月の残業時間 ======
+    public Map<String, Long> getMonthlyOvertimeByUser(YearMonth targetMonth) {
+        return attendanceRecords.stream()
+                .filter(att -> att.getCheckInTime() != null && att.getCheckOutTime() != null)
+                .filter(att -> YearMonth.from(att.getCheckInTime()).equals(targetMonth))
+                .collect(Collectors.groupingBy(
+                        Attendance::getUserId,
+                        Collectors.summingLong(Attendance::getOvertimeMinutes)
+                ));
+    }
+
+    // ====== 手動追加・更新・削除 ======
     public boolean addManualAttendance(String userId, LocalDateTime checkIn, LocalDateTime checkOut) {
         User user = userDAO.findByUsername(userId);
         if (user == null) return false; // ユーザー存在チェック
@@ -103,4 +114,5 @@ public class AttendanceDAO {
     public boolean deleteManualAttendanceById(long id) {
         return attendanceRecords.removeIf(att -> att.getId() == id);
     }
+
 }

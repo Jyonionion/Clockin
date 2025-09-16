@@ -32,7 +32,7 @@ h1, h2 {
     display: inline-block;
     margin-right: 10px;
     padding: 6px 12px;
-    background-color: #2196F3;
+    background-color: #2196F3; /* ナビゲーションも青に統一 */
     color: white;
     text-decoration: none;
     border-radius: 4px;
@@ -46,7 +46,7 @@ h1, h2 {
    成功・エラーメッセージ
 ------------------------------ */
 .success-message {
-    color: #4CAF50;
+    color: #4CAF50; /* メッセージの緑は残す */
     font-weight: bold;
     margin-bottom: 10px;
 }
@@ -88,7 +88,7 @@ h1, h2 {
 /* -----------------------------
    ボタン共通
 ------------------------------ */
-.button {
+.button, input[type="submit"], input[type="button"] {
     display: inline-block;
     padding: 6px 12px;
     font-size: 14px;
@@ -98,36 +98,25 @@ h1, h2 {
     border: none;
     border-radius: 4px;
     margin: 2px;
-    min-width: 90px;  /* 幅統一 */
+    min-width: 90px;
     box-sizing: border-box;
     transition: opacity 0.2s;
+    color: white;
+    background-color: #2196F3; /* 全て青に統一 */
 }
 
-.button:hover {
+.button:hover, input[type="submit"]:hover, input[type="button"]:hover {
     opacity: 0.85;
 }
 
-/* 追加・更新ボタン */
-.button:not(.secondary):not(.danger) {
-    background-color: #4CAF50;
-    color: white;
-}
-
-/* 無効化/有効化ボタン */
-.button.secondary {
-    background-color: #2196F3;
-    color: white;
-}
-
-/* 削除・危険ボタン */
+/* 削除・危険ボタンは赤 */
 .button.danger {
     background-color: #f44336;
-    color: white;
 }
 
 /* パスワードリセットボタンも secondary */
 .user-form .button.secondary {
-    background-color: #FF9800;
+    background-color: #2196F3;
     color: white;
 }
 

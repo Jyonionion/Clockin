@@ -13,24 +13,25 @@
     <p>ようこそ, ${user.username}さん (管理者)</p>
 
     <div class="main-nav">
-        <a href="attendance?action=filter">勤怠履歴管理</a>
-        <a href="users?action=list">ユーザー管理</a>
-        <a href="logout">ログアウト</a>
+        <a href="attendance?action=filter" class="button secondary">勤怠履歴管理</a>
+        <a href="users?action=list" class="button secondary">ユーザー管理</a>
+        <a href="logout" class="button danger">ログアウト</a>
     </div>
 
+    <!-- 成功・エラーメッセージ -->
     <c:if test="${not empty sessionScope.successMessage}">
         <p class="success-message">
             <c:out value="${sessionScope.successMessage}" />
         </p>
         <c:remove var="successMessage" scope="session" />
     </c:if>
-
     <c:if test="${not empty errorMessage}">
         <p class="error-message">
             <c:out value="${errorMessage}" />
         </p>
     </c:if>
 
+    <!-- 勤怠履歴フィルタ -->
     <h2>勤怠履歴フィルタ</h2>
     <form action="attendance" method="get" class="filter-form">
         <input type="hidden" name="action" value="filter">
@@ -49,12 +50,13 @@
             <input type="date" id="endDate" name="endDate"
                    value="<c:out value='${param.endDate}'/>">
         </div>
-        <button type="submit" class="button">フィルタ</button>
+        <button type="submit" class="button secondary">フィルタ</button>
     </form>
 
     <a href="attendance?action=export_csv&filterUserId=${param.filterUserId}&startDate=${param.startDate}&endDate=${param.endDate}"
-       class="button">勤怠履歴を CSV エクスポート</a>
+       class="button secondary">勤怠履歴を CSV エクスポート</a>
 
+    <!-- 詳細勤怠履歴 -->
     <h2>詳細勤怠履歴</h2>
     <table>
         <thead>
@@ -62,6 +64,7 @@
                 <th>従業員ID</th>
                 <th>出勤時刻</th>
                 <th>退勤時刻</th>
+                <th>残業時間</th>
                 <th>操作</th>
             </tr>
         </thead>
@@ -71,6 +74,7 @@
                 <td>${att.userId}</td>
                 <td>${att.checkInStr}</td>
                 <td>${att.checkOutStr}</td>
+                <td>${att.overtimeStr}</td>
                 <td>
                     <form action="attendance" method="post"
                           onsubmit="return confirm('本当にこの勤怠記録を削除しますか？');">
@@ -83,12 +87,48 @@
         </c:forEach>
         <c:if test="${empty allAttendanceRecords}">
             <tr>
-                <td colspan="4">データがありません。</td>
+                <td colspan="5">データがありません。</td>
             </tr>
         </c:if>
         </tbody>
     </table>
 
+    <!-- 月別残業時間 -->
+    <h2>月別残業時間</h2>
+    <form action="attendance" method="get">
+        <input type="hidden" name="action" value="filter">
+        <label for="targetMonth">対象月:</label>
+        <input type="month" id="targetMonth" name="targetMonth"
+               value="${param.targetMonth != null ? param.targetMonth : targetMonth}">
+        <button type="submit" class="button secondary">表示</button>
+    </form>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ユーザーID</th>
+                <th>残業時間</th>
+            </tr>
+        </thead>
+        <tbody>
+            <c:forEach var="entry" items="${monthlyOvertimeByUser}">
+                <tr>
+                    <td>${entry.key}</td>
+                    <td>
+                        <c:set var="totalMinutes" value="${entry.value}" />
+                        <c:set var="hours" value="${totalMinutes / 60}" />
+                        <c:set var="minutes" value="${totalMinutes % 60}" />
+                        ${hours}時間${minutes}分
+                    </td>
+                </tr>
+            </c:forEach>
+            <c:if test="${empty monthlyOvertimeByUser}">
+                <tr><td colspan="2">残業データなし</td></tr>
+            </c:if>
+        </tbody>
+    </table>
+
+    <!-- 手動追加 -->
     <h2>勤怠記録の手動追加</h2>
     <form action="attendance" method="post">
         <input type="hidden" name="action" value="add_manual">
@@ -105,7 +145,7 @@
             <input type="datetime-local" id="manualCheckOutTime" name="checkOutTime">
         </p>
         <div class="button-group">
-            <input type="submit" value="追加">
+            <input type="submit" value="追加" class="button secondary">
         </div>
     </form>
 </div>

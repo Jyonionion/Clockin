@@ -6,14 +6,13 @@ import java.io.PrintWriter;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.stream.Collectors;
 
-import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -27,9 +26,8 @@ import com.example.attendance.dto.User;
 
 @WebServlet("/attendance")
 public class AttendanceServlet extends HttpServlet {
-    private final AttendanceDAO attendanceDAO = new AttendanceDAO();
 
-    // 設定ファイルから読み込む値
+    private final AttendanceDAO attendanceDAO = new AttendanceDAO();
     private LocalTime START_TIME;
     private LocalTime END_TIME;
     private LocalTime REMINDER_TIME;
@@ -62,17 +60,8 @@ public class AttendanceServlet extends HttpServlet {
             return;
         }
 
-        // メッセージ設定
-        String message = (String) session.getAttribute("successMessage");
-        if (message != null) {
-            req.setAttribute("successMessage", message);
-            session.removeAttribute("successMessage");
-        }
-        String error = (String) session.getAttribute("errorMessage");
-        if (error != null) {
-            req.setAttribute("errorMessage", error);
-            session.removeAttribute("errorMessage");
-        }
+        // セッションメッセージ処理
+        copySessionMessageToRequest(session, req);
 
         String action = req.getParameter("action");
 
@@ -120,11 +109,13 @@ public class AttendanceServlet extends HttpServlet {
                 break;
         }
 
+        // リダイレクト
         if ("admin".equals(user.getRole())) {
             resp.sendRedirect("attendance?action=filter" +
-                    "&filterUserId=" + (req.getParameter("filterUserId") != null ? req.getParameter("filterUserId") : "") +
-                    "&startDate=" + (req.getParameter("startDate") != null ? req.getParameter("startDate") : "") +
-                    "&endDate=" + (req.getParameter("endDate") != null ? req.getParameter("endDate") : ""));
+                    "&filterUserId=" + safeParam(req.getParameter("filterUserId")) +
+                    "&startDate=" + safeParam(req.getParameter("startDate")) +
+                    "&endDate=" + safeParam(req.getParameter("endDate")) +
+                    "&targetMonth=" + safeParam(req.getParameter("targetMonth")));
         } else {
             resp.sendRedirect("attendance");
         }
@@ -134,13 +125,11 @@ public class AttendanceServlet extends HttpServlet {
         List<Attendance> records = attendanceDAO.findByUserId(user.getUsername());
         req.setAttribute("attendanceRecords", records);
 
-        // ★ 残業時間の月合計を計算
         long monthlyOvertimeMinutes = records.stream()
                 .mapToLong(Attendance::getOvertimeMinutes)
                 .sum();
-        req.setAttribute("monthlyOvertimeHours", String.format("%.1f", monthlyOvertimeMinutes / 60.0));
+        req.setAttribute("monthlyOvertimeMinutes", monthlyOvertimeMinutes);
 
-        // 打刻忘れチェック
         boolean hasCheckedInToday = records.stream().anyMatch(att ->
                 att.getCheckInTime() != null &&
                         att.getCheckInTime().toLocalDate().isEqual(LocalDate.now())
@@ -150,54 +139,43 @@ public class AttendanceServlet extends HttpServlet {
             req.setAttribute("notificationMessage", "⚠ 本日の出勤打刻がまだです！");
         }
 
-        RequestDispatcher rd = req.getRequestDispatcher("/jsp/employee_menu.jsp");
-        rd.forward(req, resp);
+        req.getRequestDispatcher("/jsp/employee_menu.jsp").forward(req, resp);
     }
 
-    // --- Admin関連メソッド（省略せずに維持） ---
     private void handleAdminFilter(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         String filterUserId = req.getParameter("filterUserId");
         String startDateStr = req.getParameter("startDate");
         String endDateStr = req.getParameter("endDate");
-        LocalDate startDate = null;
-        LocalDate endDate = null;
-        try {
-            if (startDateStr != null && !startDateStr.isEmpty()) startDate = LocalDate.parse(startDateStr);
-            if (endDateStr != null && !endDateStr.isEmpty()) endDate = LocalDate.parse(endDateStr);
-        } catch (DateTimeParseException e) {
-            req.setAttribute("errorMessage", "日付の形式が不正です。");
-        }
+
+        LocalDate startDate = parseDateOrNull(startDateStr);
+        LocalDate endDate = parseDateOrNull(endDateStr);
 
         List<Attendance> filteredRecords = attendanceDAO.findFilteredRecords(filterUserId, startDate, endDate);
         req.setAttribute("allAttendanceRecords", filteredRecords);
 
-        Map<String, Long> totalHoursByUser = filteredRecords.stream()
-                .collect(Collectors.groupingBy(Attendance::getUserId,
-                        Collectors.summingLong(att -> {
-                            if (att.getCheckInTime() != null && att.getCheckOutTime() != null) {
-                                return java.time.temporal.ChronoUnit.HOURS.between(att.getCheckInTime(), att.getCheckOutTime());
-                            }
-                            return 0L;
-                        })));
+        // 月指定
+        YearMonth targetMonth = parseTargetMonth(req.getParameter("targetMonth"));
+        req.setAttribute("targetMonth", targetMonth);
 
-        Map<String, Long> overtimeHoursByUser = filteredRecords.stream()
-                .collect(Collectors.groupingBy(Attendance::getUserId,
-                        Collectors.summingLong(Attendance::getOvertimeMinutes)));
-
-        req.setAttribute("totalHoursByUser", totalHoursByUser);
-        req.setAttribute("overtimeHoursByUser", overtimeHoursByUser);
-        req.setAttribute("monthlyWorkingHours", attendanceDAO.getMonthlyWorkingHours(filterUserId));
-        req.setAttribute("monthlyCheckInCounts", attendanceDAO.getMonthlyCheckInCounts(filterUserId));
+        Map<String, Long> monthlyOvertimeByUser = attendanceDAO.getMonthlyOvertimeByUser(targetMonth);
+        req.setAttribute("monthlyOvertimeByUser", monthlyOvertimeByUser);
 
         req.getRequestDispatcher("/jsp/admin_menu.jsp").forward(req, resp);
     }
 
     private void handleAdminDefault(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         req.setAttribute("allAttendanceRecords", attendanceDAO.findAll());
-        req.setAttribute("totalHoursByUser", null);
+
+        YearMonth targetMonth = YearMonth.now();
+        req.setAttribute("targetMonth", targetMonth);
+
+        Map<String, Long> monthlyOvertimeByUser = attendanceDAO.getMonthlyOvertimeByUser(targetMonth);
+        req.setAttribute("monthlyOvertimeByUser", monthlyOvertimeByUser);
+
         req.getRequestDispatcher("/jsp/admin_menu.jsp").forward(req, resp);
     }
 
+    // ----- 手動追加/更新/削除 -----
     private void handleAddManual(HttpServletRequest req, HttpSession session) {
         try {
             String userId = req.getParameter("userId");
@@ -236,6 +214,7 @@ public class AttendanceServlet extends HttpServlet {
         }
     }
 
+    // CSVエクスポート
     private void exportCsv(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         resp.setContentType("text/csv; charset=UTF-8");
         resp.setHeader("Content-Disposition", "attachment; filename=attendance.csv");
@@ -247,5 +226,41 @@ public class AttendanceServlet extends HttpServlet {
         }
         out.flush();
         out.close();
+    }
+
+    // ----- ヘルパー -----
+    private LocalDate parseDateOrNull(String dateStr) {
+        try {
+            return (dateStr != null && !dateStr.isEmpty()) ? LocalDate.parse(dateStr) : null;
+        } catch (DateTimeParseException e) {
+            return null;
+        }
+    }
+
+    private YearMonth parseTargetMonth(String targetMonthStr) {
+        try {
+            return (targetMonthStr != null && !targetMonthStr.isEmpty())
+                    ? YearMonth.parse(targetMonthStr)
+                    : YearMonth.now();
+        } catch (DateTimeParseException e) {
+            return YearMonth.now();
+        }
+    }
+
+    private void copySessionMessageToRequest(HttpSession session, HttpServletRequest req) {
+        String message = (String) session.getAttribute("successMessage");
+        if (message != null) {
+            req.setAttribute("successMessage", message);
+            session.removeAttribute("successMessage");
+        }
+        String error = (String) session.getAttribute("errorMessage");
+        if (error != null) {
+            req.setAttribute("errorMessage", error);
+            session.removeAttribute("errorMessage");
+        }
+    }
+
+    private String safeParam(String param) {
+        return param != null ? param : "";
     }
 }
